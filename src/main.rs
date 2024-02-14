@@ -1,5 +1,9 @@
 use image::{GrayImage, ImageBuffer, Luma};
-use std::{f32::consts::PI, fs::File, io::ErrorKind};
+use std::{
+    f32::consts::PI,
+    fs::File,
+    io::{ErrorKind, Write},
+};
 use symphonia::core::{
     audio::SampleBuffer,
     codecs::{DecoderOptions, CODEC_TYPE_NULL},
@@ -15,10 +19,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     // let path = "./ladder.wav";
-    // let path = "./piano2.wav";
+    let path = "./piano2.wav";
     // let path = "./500hz.wav";
     // let path = "./200hz+500hz.wav";
-    let path = "./output.wav";
+    // let path = "./output.wav";
     /*
         if !std::fs::metadata(path).is_ok() {
             let res = Command::new("./yt-dlp")
@@ -136,7 +140,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let chunk_size = 512;
+    let chunk_size = 1024;
 
     let fft = Fft::new(chunk_size);
     let mut values = vec![Complex::new(0., 0.); chunk_size];
@@ -179,10 +183,12 @@ fn main() -> anyhow::Result<()> {
             );
         }
 
-        // let mut out_file = File::create("./fft2.csv")?;
-        // for j in 0..chunk_size {
-        //     out_file.write_fmt(format_args!("{};{}\n", values[j].re, values[j].im))?;
-        // }
+        if i == 0 {
+            let mut out_file = File::create("./fft2.csv")?;
+            for j in 0..chunk_size {
+                out_file.write_fmt(format_args!("{};{}\n", values[j].re, values[j].im))?;
+            }
+        }
     }
 
     img.save("./spectrum.png")?;
