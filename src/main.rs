@@ -8,17 +8,17 @@ use symphonia::core::{
     formats::{FormatOptions, FormatReader},
     io::MediaSourceStream,
 };
-
 fn main() -> anyhow::Result<()> {
     if !cfg!(target_os = "windows") {
         println!("Only supporting windoof right now lol");
         anyhow::bail!("Unsupported OS");
     }
 
+    // let path = "./ladder.wav";
     // let path = "./piano2.wav";
-    let path = "./500hz.wav";
+    // let path = "./500hz.wav";
     // let path = "./200hz+500hz.wav";
-    // let path = "./output.wav";
+    let path = "./output.wav";
     /*
         if !std::fs::metadata(path).is_ok() {
             let res = Command::new("./yt-dlp")
@@ -136,17 +136,17 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let chunk_size = 2048;
+    let chunk_size = 512;
 
     let fft = Fft::new(chunk_size);
-    let mut values: Vec<Complex> = Vec::new();
-    values.resize(fft.size(), Complex::new(0., 0.));
+    let mut values = vec![Complex::new(0., 0.); chunk_size];
 
     let left = &channels[0];
 
-    let samples = left.len() / chunk_size;
+    let window_size = chunk_size;
+    let samples = left.len() / window_size;
 
-    let mut img: GrayImage = ImageBuffer::new(samples as u32, chunk_size as u32);
+    let mut img: GrayImage = ImageBuffer::new(samples as u32, (chunk_size / 2) as u32);
     img.fill(0);
 
     // hann window
@@ -155,7 +155,7 @@ fn main() -> anyhow::Result<()> {
         .collect();
 
     for i in 0..samples {
-        let x = i * chunk_size;
+        let x = i * window_size;
         if x + chunk_size > left.len() {
             break;
         }
@@ -170,9 +170,13 @@ fn main() -> anyhow::Result<()> {
         let luma: Vec<f32> = values.iter().map(|v| (v.re * v.re + v.im * v.im).sqrt()).collect();
         let max = luma.iter().reduce(|x, y| if x > y { x } else { y }).unwrap();
 
-        for j in 0..chunk_size {
+        for j in 0..chunk_size / 2 {
             let v = luma[j];
-            img.put_pixel(i as u32, (chunk_size - j - 1) as u32, Luma([((v / max) * 255.) as u8]));
+            img.put_pixel(
+                i as u32,
+                (chunk_size / 2 - j - 1) as u32,
+                Luma([((v / max) * 255.) as u8]),
+            );
         }
 
         // let mut out_file = File::create("./fft2.csv")?;
