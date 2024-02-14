@@ -103,13 +103,6 @@ fn main() -> anyhow::Result<()> {
         match decoder.decode(&packet) {
             Ok(audio_buf) => {
                 // Consume the decoded audio samples
-                // println!(
-                //     "Sample {} {} {}",
-                //     audio_buf.spec().rate,
-                //     audio_buf.frames(),
-                //     audio_buf.capacity()
-                // );
-
                 let channel_count = audio_buf.spec().channels.count();
                 let frames = audio_buf.frames();
 
