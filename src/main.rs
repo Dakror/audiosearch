@@ -1,7 +1,5 @@
-use std::{
-    fs::File,
-    io::{self, ErrorKind, Write},
-};
+use image::{GrayImage, ImageBuffer, Luma};
+use std::{f32::consts::PI, fs::File, io::ErrorKind};
 use symphonia::core::{
     audio::SampleBuffer,
     codecs::{DecoderOptions, CODEC_TYPE_NULL},
@@ -11,16 +9,15 @@ use symphonia::core::{
     io::MediaSourceStream,
 };
 
-fn main() -> std::io::Result<()> {
+fn main() -> anyhow::Result<()> {
     if !cfg!(target_os = "windows") {
         println!("Only supporting windoof right now lol");
-        return Err(std::io::Error::new(
-            ErrorKind::InvalidInput,
-            "Unsupported OS".to_owned(),
-        ));
+        anyhow::bail!("Unsupported OS");
     }
 
-    let path = "./200hz+500hz-stereo.wav";
+    // let path = "./piano2.wav";
+    let path = "./500hz.wav";
+    // let path = "./200hz+500hz.wav";
     // let path = "./output.wav";
     /*
         if !std::fs::metadata(path).is_ok() {
@@ -70,8 +67,7 @@ fn main() -> std::io::Result<()> {
     // Store the track identifier, it will be used to filter packets.
     let track_id = track.id;
 
-    let mut left: Vec<Complex> = Vec::new();
-    let mut right: Vec<Complex> = Vec::new();
+    let mut channels: Vec<Vec<Complex>> = Vec::new();
 
     // The decode loop.
     loop {
@@ -107,23 +103,29 @@ fn main() -> std::io::Result<()> {
         match decoder.decode(&packet) {
             Ok(audio_buf) => {
                 // Consume the decoded audio samples
-                println!(
-                    "Sample {} {} {}",
-                    audio_buf.spec().rate,
-                    audio_buf.frames(),
-                    audio_buf.capacity()
-                );
+                // println!(
+                //     "Sample {} {} {}",
+                //     audio_buf.spec().rate,
+                //     audio_buf.frames(),
+                //     audio_buf.capacity()
+                // );
 
+                let channel_count = audio_buf.spec().channels.count();
                 let frames = audio_buf.frames();
 
                 let mut sample_buf = SampleBuffer::<f32>::new(audio_buf.capacity() as u64, *audio_buf.spec());
                 sample_buf.copy_interleaved_ref(audio_buf);
 
-                left.reserve(frames);
-                right.reserve(frames);
-                for i in sample_buf.samples().windows(2) {
-                    left.push(Complex::new(i[0], 0.));
-                    right.push(Complex::new(i[1], 0.));
+                if channels.is_empty() {
+                    for _ in 0..channel_count {
+                        channels.push(Vec::with_capacity(frames));
+                    }
+                }
+
+                for i in sample_buf.samples().chunks(channel_count) {
+                    for j in 0..channel_count {
+                        channels[j].push(Complex::new(i[j], 0.));
+                    }
                 }
             }
             Err(Error::IoError(_)) => {
@@ -141,47 +143,52 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    let fft = Fft::new(4096);
+    let chunk_size = 2048;
 
-    let mut output: Vec<Complex> = Vec::new();
-    output.resize(fft.size(), Complex::new(0., 0.));
-    fft.fft(&left[0..fft.size()], &mut output);
+    let fft = Fft::new(chunk_size);
+    let mut values: Vec<Complex> = Vec::new();
+    values.resize(fft.size(), Complex::new(0., 0.));
 
-    let mut out_file = File::create("./fft.csv")?;
-    for i in 0..2048 {
-        out_file.write_fmt(format_args!("{};{}\n", output[i].re, output[i].im))?;
+    let left = &channels[0];
+
+    let samples = left.len() / chunk_size;
+
+    let mut img: GrayImage = ImageBuffer::new(samples as u32, chunk_size as u32);
+    img.fill(0);
+
+    // hann window
+    let window: Vec<f32> = (0..chunk_size)
+        .map(|x| 0.5 * (1.0 - f32::cos(2.0 * (PI as f32) * (x as f32) / (chunk_size - 1) as f32)))
+        .collect();
+
+    for i in 0..samples {
+        let x = i * chunk_size;
+        if x + chunk_size > left.len() {
+            break;
+        }
+
+        // load values and apply window function
+        for i in 0..chunk_size {
+            values[i] = left[x + i] * window[i];
+        }
+
+        fft.fft_inplace(&mut values);
+
+        let luma: Vec<f32> = values.iter().map(|v| (v.re * v.re + v.im * v.im).sqrt()).collect();
+        let max = luma.iter().reduce(|x, y| if x > y { x } else { y }).unwrap();
+
+        for j in 0..chunk_size {
+            let v = luma[j];
+            img.put_pixel(i as u32, (chunk_size - j - 1) as u32, Luma([((v / max) * 255.) as u8]));
+        }
+
+        // let mut out_file = File::create("./fft2.csv")?;
+        // for j in 0..chunk_size {
+        //     out_file.write_fmt(format_args!("{};{}\n", values[j].re, values[j].im))?;
+        // }
     }
 
+    img.save("./spectrum.png")?;
+
     Ok(())
-
-    //     println!("What's your name?");
-    //     let mut buffer = String::new();
-    //
-    //     if let Ok(_) = io::stdin().read_line(&mut buffer) {
-    //         println!("Hello, {}", buffer);
-    //     } else {
-    //         println!("Who are you?!")
-    //     }
-
-    //     let output = YoutubeDl::new("https://www.youtube.com/watch?v=sZJjVpU3hL0")
-    //         .socket_timeout("15")
-    //         .youtube_dl_path("./yt-dlp.exe")
-    //         .run();
-    //
-    //     if let Ok(json) = output {
-    //         if let Some(video) = json.into_single_video() {
-    //             println!(
-    //                 "Video title: {}",
-    //                 video.title.unwrap_or("No title".to_owned())
-    //             );
-    //
-    //             // Perform a forward FFT of size 1234
-    //             let mut planner = FftPlanner::<f32>::new();
-    //             let fft = planner.plan_fft_forward(1234);
-    //
-    //             let mut buffer = vec![Complex { re: 0.0, im: 0.0 }; 1234];
-    //
-    //             fft.process(&mut buffer);
-    //         }
-    //     }
 }
